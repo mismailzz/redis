@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 )
 
@@ -16,6 +17,7 @@ type Server struct {
 	peer      map[*Peer]bool
 	peerAddCh chan *Peer
 	quitCh    chan struct{}
+	readChan  chan []byte
 }
 
 func NewServer(cfg Config) *Server {
@@ -27,6 +29,7 @@ func NewServer(cfg Config) *Server {
 		peer:      make(map[*Peer]bool),
 		peerAddCh: make(chan *Peer),
 		quitCh:    make(chan struct{}),
+		readChan:  make(chan []byte),
 	}
 }
 
@@ -36,6 +39,7 @@ func (s *Server) Start() error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("Server listening on %s\n", s.ListenAddr)
 	go s.loop()
 
 	return s.acceptLoop()
@@ -45,16 +49,22 @@ func (s *Server) acceptLoop() error {
 	for {
 		conn, err := s.ln.Accept()
 		if err != nil {
-			return err
+			fmt.Errorf("Error accepting connection: %v", err)
+			continue
 		}
 		go s.handleNewConnection(conn)
 	}
 }
 
 func (s *Server) handleNewConnection(conn net.Conn) {
-	peer := NewPeer(conn)
+	peer := NewPeer(conn, s.readChan)
 	s.peerAddCh <- peer
-	peer.readLoop()
+	fmt.Printf("New peer connected: %s\n", conn.RemoteAddr().String())
+	err := peer.readLoop()
+	if err != nil {
+		fmt.Printf("Error reading from peer %s: %v", conn.RemoteAddr().String(), err)
+	}
+
 }
 
 func (s *Server) loop() {
@@ -62,6 +72,8 @@ func (s *Server) loop() {
 		select {
 		case peer := <-s.peerAddCh:
 			s.peer[peer] = true
+		case msg := <-s.readChan:
+			fmt.Printf("Server received message: %s\n", string(msg))
 		case <-s.quitCh:
 			return
 		}

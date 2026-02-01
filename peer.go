@@ -3,15 +3,26 @@ package main
 import "net"
 
 type Peer struct {
-	conn net.Conn
+	conn    net.Conn
+	msgChan chan []byte
 }
 
-func NewPeer(conn net.Conn) *Peer {
-	return &Peer{conn: conn}
+func NewPeer(conn net.Conn, readChan chan []byte) *Peer {
+	return &Peer{
+		conn:    conn,
+		msgChan: readChan,
+	}
 }
 
-func (p *Peer) readLoop() {
+func (p *Peer) readLoop() error {
+	buff := make([]byte, 1024)
 	for {
-		// Implementation for reading data from the connection
+		n, err := p.conn.Read(buff)
+		if err != nil {
+			return err
+		}
+		rbuff := make([]byte, n)
+		copy(rbuff, buff[:n])
+		p.msgChan <- rbuff
 	}
 }
